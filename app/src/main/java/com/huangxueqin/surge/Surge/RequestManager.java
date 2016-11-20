@@ -7,11 +7,9 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
-import android.util.Log;
+import android.util.Size;
 import android.view.View;
 import android.widget.ImageView;
-
-import com.huangxueqin.surge.Surge.Utils.Logger;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -26,25 +24,26 @@ import java.util.concurrent.Executors;
  */
 
 public class RequestManager {
-    static final int MSG_RETRIEVE_COMPLETE = 0x100;
-    static final int MSG_RETRIEVE_FAIL     = 0x101;
-    static final int MSG_DOWNLOAD_COMPLETE = 0x102;
-    static final int MSG_DOWNLOAD_FAIL     = 0x103;
+    private static final int MAX_RETRY_TIMES = 3;
+
+    static final int MSG_RETRIEVE_DONE = 0x100;
+    static final int MSG_RETRIEVE_FAIL = 0x101;
+    static final int MSG_DOWNLOAD_DONE = 0x102;
+    static final int MSG_DOWNLOAD_FAIL = 0x103;
+
 
     private static RequestManager INSTANCE;
 
-    private Context context;
     private Surge surge;
     private Handler mainHandler;
-    private final ExecutorService executePool = Executors.newFixedThreadPool(5);
-    private final HashMap<View, RequestOperation.Token> operationMap = new HashMap<>();
-    private final HashMap<String, List<ImageView>> requestQueues = new HashMap<>();
+    private final ExecutorService downloadPool = Executors.newFixedThreadPool(5);
+    private final ExecutorService cacheRetrievePool = Executors.newSingleThreadExecutor();
     private HandlerThread notifyHandlerThread;
     private NotifyHandler notifyHandler;
-
+    private final HashMap<View, RequestOperation.Token> operationMap = new HashMap<>();
+    private final HashMap<String, List<ImageView>> requestQueues = new HashMap<>();
 
     private RequestManager(Context context) {
-        this.context = context;
         this.surge = Surge.get(context);
         this.mainHandler = new Handler(context.getMainLooper());
         notifyHandlerThread = new HandlerThread("notify handler thread");
@@ -63,37 +62,92 @@ public class RequestManager {
         return INSTANCE;
     }
 
-    /**
-     * @param url
-     * @param v
-     * @return return true if url is already in request, else return false
-     */
-    private boolean addToRequestQueue(String url, ImageView v) {
-        boolean exist = false;
-        List<ImageView> queue = requestQueues.get(url);
+    public void loadImage(String url, ImageView view, Point preferSize) {
+        cacheRetrievePool.execute(new RetrieveTask(new Token(url, view, preferSize)));
+    }
+
+    public void loadImage(String url, ImageView view) {
+        loadImage(url, view, null);
+    }
+
+    private void onRetrieveCacheFail(Token token) {
+        List<ImageView> queue = requestQueues.get(token.url);
         if (queue == null) {
             queue = new LinkedList<>();
-            queue.add(v);
-            requestQueues.put(url, queue);
+            queue.add(token.view);
+            requestQueues.put(token.url, queue);
+            RequestOperation operation = new RequestOperation(token.url, token.view, token.size,
+                    notifyHandler, surge.cache);
+            RequestOperation.Token lastRequest = operationMap.get(token.view);
+            if (lastRequest != null) {
+                lastRequest.cancel();
+            }
+            operationMap.put(token.view, operation.token);
+            operation.token.future = downloadPool.submit(operation);
         } else {
-            for (ImageView iv : queue) {
-                if (iv == v) {
-                    exist = true;
-                    break;
+            // add view to request queue of the URL
+            Iterator<ImageView> it = queue.iterator();
+            while (it.hasNext()) {
+                if (it.next() == token.view) {
+                    // already in request queue, return;
+                    return;
                 }
             }
-            if (!exist) {
-                queue.add(v);
+            queue.add(token.view);
+        }
+    }
+
+    private void onDownloadDone(RequestOperation.Token token) {
+        Bitmap image = null;
+        try {
+            image = token.get();
+        } catch (Exception e) {
+            image = surge.cache.retrieveImage(token.url, token.size);
+        }
+        if (image == null) {
+            onDownloadFail(token);
+            return;
+        }
+        String url = token.url;
+        List<ImageView> queue = requestQueues.get(url);
+        if (queue != null) {
+            Iterator<ImageView> it = queue.iterator();
+            while (it.hasNext()) {
+                ImageView queuedView = it.next();
+                RequestOperation.Token queuedViewToken = operationMap.get(queuedView);
+                if (queuedViewToken == null || token.fits(queuedViewToken)) {
+                    setImage(queuedView, image);
+                    operationMap.remove(queuedView);
+                }
             }
         }
-        return exist;
+        requestQueues.remove(url);
     }
 
-    public synchronized void loadImage(String url, ImageView view) {
-        RetrieveTask retrieveTask = new RetrieveTask(url, view, null);
-        executePool.execute(retrieveTask);
+    private void onDownloadFail(RequestOperation.Token token) {
+        if (token.retry < MAX_RETRY_TIMES) {
+            List<ImageView> queue = requestQueues.get(token.url);
+            if (queue != null) {
+                boolean willRetry = false;
+                Iterator<ImageView> it = queue.iterator();
+                while (it.hasNext()) {
+                    ImageView queuedView = it.next();
+                    RequestOperation.Token queuedViewToken = operationMap.get(queuedView);
+                    if (queuedViewToken == null || token.fits(queuedViewToken)) {
+                        willRetry = true;
+                        operationMap.put(queuedView, token);
+                    }
+                }
+                if (willRetry) {
+                    token.retry += 1;
+                    token.future = downloadPool.submit(new RequestOperation(token, notifyHandler, surge.cache));
+                }
+            }
+        } else {
+            operationMap.remove(token.view);
+            requestQueues.remove(token.url);
+        }
     }
-
 
     private class NotifyHandler extends Handler {
 
@@ -104,49 +158,14 @@ public class RequestManager {
         @Override
         public void handleMessage(Message msg) {
             switch (msg.what) {
-                case MSG_DOWNLOAD_COMPLETE:
-                    RequestOperation.Token t0 = (RequestOperation.Token) msg.obj;
-                    String url = t0.url;
-                    List<ImageView> queues = requestQueues.get(url);
-                    if (queues != null) {
-                        Iterator<ImageView> it = queues.iterator();
-                        while(it.hasNext()) {
-                            ImageView iv = it.next();
-                            RequestOperation.Token t = operationMap.get(iv);
-                            if (t == null || t.url.equals(url)) {
-                                try {
-                                    setImage(iv, t0.future.get());
-                                } catch (InterruptedException e) {
-                                    e.printStackTrace();
-                                } catch (ExecutionException e) {
-                                    e.printStackTrace();
-                                }
-                            }
-                            it.remove();
-                        }
-                    }
+                case MSG_DOWNLOAD_DONE:
+                    onDownloadDone((RequestOperation.Token) msg.obj);
                     break;
                 case MSG_DOWNLOAD_FAIL:
-                    RequestOperation.Token t1 = (RequestOperation.Token) msg.obj;
-                    operationMap.remove(t1.view);
-                    requestQueues.remove(t1.url);
-                    break;
-                case MSG_RETRIEVE_COMPLETE:
-                    RetrieveTask.Token t2 = (RetrieveTask.Token) msg.obj;
-                    setImage(t2.view, t2.image);
+                    onDownloadFail((RequestOperation.Token) msg.obj);
                     break;
                 case MSG_RETRIEVE_FAIL:
-                    RetrieveTask.Token t3 = (RetrieveTask.Token) msg.obj;
-                    boolean startRequest = (addToRequestQueue(t3.url, t3.view) == false);
-                    RequestOperation operation = new RequestOperation(t3.url, t3.view, t3.size, notifyHandler, surge.cache);
-                    RequestOperation.Token token = operationMap.get(t3.view);
-                    if (token != null && (requestQueues.get(token.url) == null)) {
-                        token.cancel();
-                    }
-                    operationMap.put(t3.view, operation.token);
-                    if (startRequest) {
-                        operation.token.future = executePool.submit(operation);
-                    }
+                    onRetrieveCacheFail((Token) msg.obj);
                     break;
             }
         }
@@ -161,31 +180,73 @@ public class RequestManager {
         });
     }
 
+    /**
+     * running in cacheRetrievePool
+     */
     private class RetrieveTask implements Runnable {
-
-        class Token {
-            String url;
-            ImageView view;
-            Point size;
-            Bitmap image;
-        }
-
         Token token;
 
-        public RetrieveTask(String url, ImageView view, Point size) {
-            token = new Token();
-            token.url = url;
-            token.view = view;
-            token.size = size;
+        public RetrieveTask(Token token) {
+            this.token = token;
         }
 
         @Override
         public void run() {
-            token.image = surge.cache.retrieveImage(token.url, token.size);
-            Message msg = notifyHandler.obtainMessage();
-            msg.obj = token;
-            msg.what = (token.image != null ? MSG_RETRIEVE_COMPLETE : MSG_RETRIEVE_FAIL);
-            msg.sendToTarget();
+            Bitmap image = surge.cache.retrieveImage(token.url, token.size);
+            if (image == null) {
+                Message msg = notifyHandler.obtainMessage();
+                msg.obj = token;
+                msg.what = MSG_RETRIEVE_FAIL;
+                msg.sendToTarget();
+            } else {
+                // retrieve success
+                setImage(token.view, image);
+            }
+        }
+    }
+
+    /**
+     * Token that identify an image loading job
+     */
+    static class Token {
+        final String url;
+        final ImageView view;
+        final Point size;
+
+        Token(String url, ImageView view) {
+            this(url, view, null);
+        }
+
+        Token(String url, ImageView view, Point size) {
+            this.url = url;
+            this.view = view;
+            this.size = size;
+        }
+
+        Token(Token t) {
+            this.url = t.url;
+            this.view = t.view;
+            this.size = t.size;
+        }
+
+        public boolean fits(Token t) {
+            return t != null && t.url.equals(url);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o == this) return true;
+            if (o instanceof Token) {
+                Token t = (Token) o;
+                return t.url.equals(url) && t.view == view && sizeEqual(size, t.size);
+            }
+            return false;
+        }
+
+        private static boolean sizeEqual(final Point lhs, final Point rhs) {
+            if (lhs == null) { return rhs == null; }
+            if (rhs == null) { return false; }
+            return lhs.x == rhs.x && lhs.y == rhs.y;
         }
     }
 }

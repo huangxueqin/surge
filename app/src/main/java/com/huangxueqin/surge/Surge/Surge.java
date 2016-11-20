@@ -3,6 +3,8 @@ package com.huangxueqin.surge.Surge;
 import android.content.Context;
 import android.widget.ImageView;
 
+import com.huangxueqin.surge.R;
+
 /**
  * Created by huangxueqin on 16/11/13.
  */
@@ -32,7 +34,12 @@ public class Surge {
         return surge;
     }
 
-    public static void loadImage(final String url, final ImageView view) {
+    public static void loadImage(final String url, final ImageView view, int placeHolder) {
+        view.setImageResource(placeHolder);
         RequestManager.get(view.getContext()).loadImage(url, view);
+    }
+
+    public static void loadImage(final String url, final ImageView view) {
+        loadImage(url, view, android.R.color.transparent);
     }
 }

@@ -1,23 +1,18 @@
 package com.huangxueqin.surge.Surge;
 
-import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Point;
 import android.os.Handler;
 import android.os.Message;
-import android.util.Log;
 import android.widget.ImageView;
 
 import com.huangxueqin.surge.Surge.Utils.Logger;
 
-import java.io.BufferedInputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
 /**
@@ -28,12 +23,7 @@ public class RequestOperation implements Callable<Bitmap> {
     private static final int CONNECT_TIMEOUT = 5000;
     private static final int READ_TIMEOUT = 5000;
 
-
-
-    String url;
-    ImageView toView;
     Token token;
-    private Point size;
     private Handler notifier;
     private SurgeCache cache;
     private boolean cancelled;
@@ -43,14 +33,17 @@ public class RequestOperation implements Callable<Bitmap> {
                             Point size,
                             Handler notifier,
                             SurgeCache cache) {
-        this.url = url;
-        this.size = size;
         this.notifier = notifier;
         this.cache = cache;
+        this.token = new Token(url, toView, size);
+    }
 
-        this.token = new Token();
-        token.url = url;
-        token.view = toView;
+    public RequestOperation(Token token,
+                            Handler notifier,
+                            SurgeCache cache) {
+        this.notifier = notifier;
+        this.cache = cache;
+        this.token = token;
     }
 
     private void sendMessage(int what) {
@@ -63,9 +56,9 @@ public class RequestOperation implements Callable<Bitmap> {
     @Override
     public Bitmap call() throws Exception {
         Bitmap bitmap = null;
-        URL remote = new URL(url);
+        URL remote = new URL(token.url);
         HttpURLConnection conn = (HttpURLConnection) remote.openConnection();
-        Logger.D("start to request url: " + url);
+        Logger.D("start to request url: " + token.url);
         conn.setDoInput(true);
         conn.setConnectTimeout(CONNECT_TIMEOUT);
         conn.setReadTimeout(READ_TIMEOUT);
@@ -75,25 +68,43 @@ public class RequestOperation implements Callable<Bitmap> {
         }
         Logger.D("get response code");
         InputStream is = conn.getInputStream();
-        boolean success = cache.storeImage(url, is);
-        Logger.D("download image(" + url + ") " + success);
+        boolean success = cache.storeImage(token.url, is);
+        Logger.D("download image(" + token.url + ") " + success);
         if (success) {
-            bitmap = cache.retrieveImage(url, size);
+            bitmap = cache.retrieveImage(token.url, token.size);
         }
-        sendMessage(success ? RequestManager.MSG_DOWNLOAD_COMPLETE : RequestManager.MSG_DOWNLOAD_FAIL);
+        sendMessage(success ? RequestManager.MSG_DOWNLOAD_DONE : RequestManager.MSG_DOWNLOAD_FAIL);
         return bitmap;
     }
 
-    public class Token {
-        String url;
-        ImageView view;
+    public class Token extends RequestManager.Token {
         Future<Bitmap> future;
+        int retry;
+
+        Token(String url, ImageView view) {
+            super(url, view);
+        }
+
+        Token(String url, ImageView view, Point size) {
+            super(url, view, size);
+        }
+
+        Token(RequestManager.Token t) {
+            super(t);
+        }
 
         public void cancel() {
             if (future != null) {
                 future.cancel(true);
             }
             cancelled = true;
+        }
+
+        public Bitmap get() throws ExecutionException, InterruptedException {
+            if (future != null) {
+                return future.get();
+            }
+            return null;
         }
     }
 }
