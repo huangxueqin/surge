@@ -1,4 +1,4 @@
-package com.huangxueqin.surge.Utils;
+package com.huangxueqin.surge.Surge.Utils;
 
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;

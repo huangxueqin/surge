@@ -2,15 +2,12 @@ package com.huangxueqin.surge.Surge;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Point;
 import android.os.Environment;
-import android.os.Handler;
-import android.util.Log;
 import android.util.LruCache;
 
-import com.huangxueqin.surge.Utils.BitmapUtils;
-import com.huangxueqin.surge.Utils.Logger;
+import com.huangxueqin.surge.Surge.Utils.BitmapUtils;
+import com.huangxueqin.surge.Surge.Utils.Logger;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -20,10 +17,6 @@ import java.io.InputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 
 /**
  * Created by huangxueqin on 16/11/12.
@@ -131,16 +124,23 @@ public class SurgeCache {
         return image;
     }
 
-    public void storeImage(final String url, final InputStream is) {
-        storeImage(url, is, null);
+    public boolean storeImage(final String url, final InputStream is) {
+        return storeImage(url, is, null);
     }
 
-    public void storeImage(final String url, final InputStream is, Point preferSize) {
+    /**
+     *
+     * @param url
+     * @param is
+     * @param preferSize
+     * @return true if store success
+     */
+    public boolean storeImage(final String url, final InputStream is, Point preferSize) {
         BufferedInputStream bis = new BufferedInputStream(is);
         try {
             Bitmap image = BitmapUtils.decodeBitmapFromStream(is, preferSize);
             if (image == null) {
-                return;
+                return false;
             }
             memCache.put(url, image);
             // save bitmap to disk
@@ -150,12 +150,13 @@ public class SurgeCache {
                 try {
                     editor = diskCache.edit(diskFileName);
                     if (editor == null) {
-                        return;
+                        return false;
                     }
                     BufferedOutputStream bos = new BufferedOutputStream(editor.newOutputStream());
                     image.compress(Bitmap.CompressFormat.PNG, 100, bos);
                     bos.close();
                     editor.commit();
+                    return true;
                 } catch (IOException e) {
                     e.printStackTrace();
                     if (editor != null) {
@@ -181,5 +182,7 @@ public class SurgeCache {
                 e.printStackTrace();
             }
         }
+
+        return false;
     }
 }

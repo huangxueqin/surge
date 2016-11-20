@@ -1,19 +1,7 @@
 package com.huangxueqin.surge.Surge;
 
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.Point;
-import android.os.Handler;
 import android.widget.ImageView;
-
-import com.huangxueqin.surge.Utils.Logger;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 
 /**
  * Created by huangxueqin on 16/11/13.

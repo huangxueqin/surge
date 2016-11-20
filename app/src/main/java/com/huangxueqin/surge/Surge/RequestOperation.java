@@ -9,6 +9,8 @@ import android.os.Message;
 import android.util.Log;
 import android.widget.ImageView;
 
+import com.huangxueqin.surge.Surge.Utils.Logger;
+
 import java.io.BufferedInputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -23,89 +25,75 @@ import java.util.concurrent.Future;
  */
 
 public class RequestOperation implements Callable<Bitmap> {
-    private static final String TAG = "RequestOperation";
-
     private static final int CONNECT_TIMEOUT = 5000;
     private static final int READ_TIMEOUT = 5000;
 
-    public static final int MSG_DOWNLOAD_COMPLETE = 0x100;
 
-    private Object key;
-    private String url;
+
+    String url;
+    ImageView toView;
+    Token token;
     private Point size;
     private Handler notifier;
     private SurgeCache cache;
     private boolean cancelled;
 
-    public RequestOperation(Object key,
-                            String url,
+    public RequestOperation(String url,
+                            ImageView toView,
                             Point size,
                             Handler notifier,
                             SurgeCache cache) {
-        this.key = key;
         this.url = url;
         this.size = size;
         this.notifier = notifier;
         this.cache = cache;
+
+        this.token = new Token();
+        token.url = url;
+        token.view = toView;
+    }
+
+    private void sendMessage(int what) {
+        Message msg = notifier.obtainMessage();
+        msg.what = what;
+        msg.obj = token;
+        msg.sendToTarget();
     }
 
     @Override
     public Bitmap call() throws Exception {
-        if (cancelled) {
-            return null;
-        }
-        Bitmap image = null;
+        Bitmap bitmap = null;
         URL remote = new URL(url);
         HttpURLConnection conn = (HttpURLConnection) remote.openConnection();
-        Log.d(TAG, "start to request url");
+        Logger.D("start to request url: " + url);
         conn.setDoInput(true);
         conn.setConnectTimeout(CONNECT_TIMEOUT);
         conn.setReadTimeout(READ_TIMEOUT);
         if (conn.getResponseCode() != HttpURLConnection.HTTP_OK || cancelled) {
-            return null;
+            sendMessage(RequestManager.MSG_DOWNLOAD_FAIL);
+            return bitmap;
         }
-        Log.d(TAG, "get response code");
+        Logger.D("get response code");
         InputStream is = conn.getInputStream();
-        cache.storeImage(url, is);
-        if (cancelled) {
-            return null;
+        boolean success = cache.storeImage(url, is);
+        Logger.D("download image(" + url + ") " + success);
+        if (success) {
+            bitmap = cache.retrieveImage(url, size);
         }
-        image = cache.retrieveImage(url, size);
-        if (cancelled) {
-            return null;
-        }
-        Message msg = notifier.obtainMessage();
-        msg.what = MSG_DOWNLOAD_COMPLETE;
-        msg.sendToTarget();
-        msg.obj = key;
-        D("url: " + url);
-        return image;
-    }
-
-    public Token submitTo(ExecutorService service) {
-        Token t = new Token();
-        t.future = service.submit(this);
-        t.url = url;
-        return t;
+        sendMessage(success ? RequestManager.MSG_DOWNLOAD_COMPLETE : RequestManager.MSG_DOWNLOAD_FAIL);
+        return bitmap;
     }
 
     public class Token {
-        public String url;
-
-
-        private Future<Bitmap> future;
+        String url;
+        ImageView view;
+        Future<Bitmap> future;
 
         public void cancel() {
-            future.cancel(true);
+            if (future != null) {
+                future.cancel(true);
+            }
             cancelled = true;
         }
-
-        public Bitmap get() throws ExecutionException, InterruptedException {
-            return future.get();
-        }
-    }
-
-    private static void D(String msg) {
-        Log.d(RequestOperation.class.getSimpleName(), msg);
     }
 }
