@@ -15,13 +15,17 @@ import com.huangxueqin.surge.Surge.Surge;
 public class MainActivity extends AppCompatActivity {
 
     ListView mList;
-    Surge imita;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         mList = (ListView) findViewById(R.id.list);
         mList.setAdapter(new MyAdapter(this));
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
     }
 
     static class MyAdapter extends BaseAdapter {
@@ -49,10 +53,10 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
             if (convertView == null) {
-                convertView = LayoutInflater.from(convertView.getContext()).inflate(R.layout.list_item, parent, false);
+                convertView = LayoutInflater.from(parent.getContext()).inflate(R.layout.list_item, parent, false);
             }
             ImageView image = (ImageView) convertView.findViewById(R.id.image);
-            //Surge.with(mContext).load(images[position]).into(image);
+            Surge.loadImage(images[position], image);
             return convertView;
         }
     }

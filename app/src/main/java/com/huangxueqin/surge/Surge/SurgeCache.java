@@ -6,7 +6,11 @@ import android.graphics.BitmapFactory;
 import android.graphics.Point;
 import android.os.Environment;
 import android.os.Handler;
+import android.util.Log;
 import android.util.LruCache;
+
+import com.huangxueqin.surge.Utils.BitmapUtils;
+import com.huangxueqin.surge.Utils.Logger;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -15,6 +19,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.HashMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -25,39 +30,12 @@ import java.util.concurrent.Future;
  */
 
 public class SurgeCache {
+    private static HashMap<String, String> urlToFileNameMap = new HashMap<>();
 
-    public static interface Callback {
-        void onResult(Bitmap result);
-    }
-
-    private static final String CACHE_FOLDER_NAME = "bitmaps";
-    private static final long MAX_DISK_CACHE_SIZE = 150 * 1024 * 1024;
-
-    private Context context;
     private LruCache<String, Bitmap> memCache;
     private SurgeDiskCache diskCache;
 
-    private ExecutorService ioQueue;
-    private Handler mainHandler;
-
-    private static SurgeCache sInstance;
-
-    public synchronized static SurgeCache getInstance(Context context) {
-        if (sInstance == null) {
-            try {
-                sInstance = new SurgeCache(context);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        return sInstance;
-    }
-
-    private SurgeCache(Context context) throws IOException {
-        if (sInstance != null) {
-            throw new IllegalStateException("can not create multiple instance of SurgeCache");
-        }
-        this.context = context.getApplicationContext();
+    public SurgeCache(Context context, String diskCacheDirName, long diskCacheSize) {
         // init memCache
         final int maxMemory = (int) (Runtime.getRuntime().maxMemory()/1024);
         this.memCache = new LruCache<String, Bitmap>(maxMemory/8) {
@@ -68,105 +46,114 @@ public class SurgeCache {
         };
 
         // init diskCache
-        diskCache = SurgeDiskCache.open(getDiskCacheDirectory(context), MAX_DISK_CACHE_SIZE);
-
-        // init ioQueue
-        ioQueue = Executors.newSingleThreadExecutor();
-        mainHandler = new Handler(context.getMainLooper());
-    }
-
-    private static File getDiskCacheDirectory(Context context) {
-        File cacheDir = null;
-        if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
-            cacheDir = context.getExternalCacheDir();
-        } else {
-            cacheDir = context.getCacheDir();
-        }
-        return new File(cacheDir, CACHE_FOLDER_NAME);
-    }
-
-    private static String cacheFileNameForKey(String key) {
+        File sysCacheDir = getApplicationCacheDirectory(context);
+        File diskCacheDir = new File(sysCacheDir, diskCacheDirName);
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] hash = md.digest(key.getBytes());
-            StringBuffer result = new StringBuffer();
-            for(byte b : hash) {
-                String hex = Integer.toHexString(b);
-                if (hex.length() == 1) {
-                    result.append('0');
-                }
-                result.append(hex);
-            }
-            return result.toString();
-        } catch (NoSuchAlgorithmException e) {
+            diskCache = SurgeDiskCache.open(diskCacheDir, diskCacheSize);
+        } catch (IOException e) {
             e.printStackTrace();
+            Logger.D("can not initialize disk cache");
         }
-        return null;
     }
 
-    public Future<Bitmap> retrieveImage(String url) {
+    private static File getApplicationCacheDirectory(Context context) {
+        if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
+            return context.getApplicationContext().getExternalCacheDir();
+        } else {
+            return context.getApplicationContext().getCacheDir();
+        }
+    }
+
+    private static String cacheFileNameForURL(String url) {
+        String name = urlToFileNameMap.get(url);
+        if (name == null) {
+            try {
+                MessageDigest md = MessageDigest.getInstance("MD5");
+                byte[] hash = md.digest(url.getBytes());
+                StringBuffer result = new StringBuffer();
+                for (byte b : hash) {
+                    String hex = Integer.toHexString(0xff & b);
+                    if (hex.length() == 1) {
+                        result.append('0');
+                    }
+                    result.append(hex);
+                }
+                name = result.toString();
+                urlToFileNameMap.put(url, name);
+            } catch (NoSuchAlgorithmException e) {
+                e.printStackTrace();
+            }
+        }
+        return name;
+    }
+
+    private boolean fitSize(Bitmap image, Point requiredSize) {
+        if (requiredSize == null || requiredSize.equals(0, 0)) {
+            return true;
+        } else {
+            return requiredSize.x <= image.getWidth() && requiredSize.y <= image.getHeight();
+        }
+    }
+
+    public Bitmap retrieveImage(String url) {
         return retrieveImage(url, null);
     }
 
-    public Future<Bitmap> retrieveImage(final String url, final Point preferSize) {
-        return ioQueue.submit(new Callable<Bitmap>() {
-            @Override
-            public Bitmap call() throws Exception {
-                Bitmap image = memCache.get(url);
-                if (image != null && (preferSize == null ||
-                        (preferSize.x <= image.getWidth() && preferSize.y <= image.getHeight()))) {
-                    return image;
-                }
-                String key = cacheFileNameForKey(url);
-                InputStream is = null;
-                try {
-                    is = diskCache.getInputStream(key);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                if (is != null) {
-                    BitmapFactory.Options options = new BitmapFactory.Options();
-                    if (preferSize != null) {
-                        options.inJustDecodeBounds = true;
-                        BitmapFactory.decodeStream(is, null, options);
-                        if (image == null || (options.outWidth > image.getWidth() && options.outHeight > image.getHeight())) {
-                            options.inSampleSize = computeInSampleSize(options, preferSize);
-                        }
-                        options.inJustDecodeBounds = false;
-                    }
-                    if (image == null || (options.outWidth > image.getWidth() && options.outHeight > image.getHeight())) {
-                        Bitmap decodedImage = BitmapFactory.decodeStream(is, null, options);
-                        memCache.put(url, decodedImage);
-                        image.recycle();
-                        image = decodedImage;
-                    }
-                }
-                return image;
+    public Bitmap retrieveImage(final String url, final Point preferSize) {
+        Bitmap image = memCache.get(url);
+        if (image != null && fitSize(image, preferSize)) {
+            return image;
+        }
+        if (diskCache == null) {
+            // no disk cache...
+            return image;
+        }
+        String diskFileName = cacheFileNameForURL(url);
+        InputStream is = null;
+        try {
+            is = diskCache.getInputStream(diskFileName);
+            image = BitmapUtils.decodeBitmapFromStream(is, preferSize);
+            if (image != null) {
+                memCache.put(url, image);
             }
-        });
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (is != null) {
+                    is.close();
+                }
+                diskCache.flush();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return image;
     }
 
     public void storeImage(final String url, final InputStream is) {
-        ioQueue.execute(new Runnable() {
-            @Override
-            public void run() {
-                String key = cacheFileNameForKey(url);
+        storeImage(url, is, null);
+    }
+
+    public void storeImage(final String url, final InputStream is, Point preferSize) {
+        BufferedInputStream bis = new BufferedInputStream(is);
+        try {
+            Bitmap image = BitmapUtils.decodeBitmapFromStream(is, preferSize);
+            if (image == null) {
+                return;
+            }
+            memCache.put(url, image);
+            // save bitmap to disk
+            if (diskCache != null) {
+                String diskFileName = cacheFileNameForURL(url);
                 SurgeDiskCache.Editor editor = null;
                 try {
-                    editor = diskCache.edit(key);
-                    BufferedOutputStream bos = new BufferedOutputStream(diskCache.edit(key).newOutputStream());
-                    BufferedInputStream bis = null;
-                    if (!(is instanceof BufferedInputStream)) {
-                        bis = new BufferedInputStream(is);
-                    } else {
-                        bis = (BufferedInputStream) is;
+                    editor = diskCache.edit(diskFileName);
+                    if (editor == null) {
+                        return;
                     }
-                    byte[] data = new byte[1024];
-                    int readLen = -1;
-                    while ((readLen = bis.read(data)) != -1) {
-                        bos.write(data, 0, readLen);
-                    }
-                    bos.flush();
+                    BufferedOutputStream bos = new BufferedOutputStream(editor.newOutputStream());
+                    image.compress(Bitmap.CompressFormat.PNG, 100, bos);
                     bos.close();
                     editor.commit();
                 } catch (IOException e) {
@@ -181,37 +168,18 @@ public class SurgeCache {
                 } finally {
                     try {
                         is.close();
+                        diskCache.flush();
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
                 }
             }
-        });
-    }
-
-    private static int computeInSampleSize(BitmapFactory.Options ops, Point preferSize) {
-        int inSampleSize = 1;
-        final int width = ops.outWidth;
-        final int height = ops.outHeight;
-        if (width > preferSize.x && height > preferSize.y) {
-            final int halfWidth = width / 2;
-            final int halfHeight = height / 2;
-            while (halfWidth/inSampleSize >= preferSize.x && halfHeight/inSampleSize >= preferSize.y) {
-                inSampleSize *= 2;
+        } finally {
+            try {
+                bis.close();
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         }
-        return inSampleSize;
-    }
-
-    private void postResult(final Bitmap bitmap, final Callback callback) {
-        if (callback == null) {
-            return;
-        }
-        mainHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                callback.onResult(bitmap);
-            }
-        });
     }
 }
