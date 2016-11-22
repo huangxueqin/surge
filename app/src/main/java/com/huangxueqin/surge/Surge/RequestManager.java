@@ -30,6 +30,7 @@ public class RequestManager {
     static final int MSG_RETRIEVE_FAIL = 0x101;
     static final int MSG_DOWNLOAD_DONE = 0x102;
     static final int MSG_DOWNLOAD_FAIL = 0x103;
+    static final int MSG_CANCEL        = 0x104;
 
 
     private static RequestManager INSTANCE;
@@ -40,7 +41,7 @@ public class RequestManager {
     private final ExecutorService cacheRetrievePool = Executors.newSingleThreadExecutor();
     private HandlerThread notifyHandlerThread;
     private NotifyHandler notifyHandler;
-    private final HashMap<View, RequestOperation.Token> operationMap = new HashMap<>();
+    private final HashMap<View, Token> operationMap = new HashMap<>();
     private final HashMap<String, List<ImageView>> requestQueues = new HashMap<>();
 
     private RequestManager(Context context) {
@@ -62,12 +63,26 @@ public class RequestManager {
         return INSTANCE;
     }
 
-    public void loadImage(String url, ImageView view, Point preferSize) {
+    public void loadImage(final String url, final ImageView view, final Point preferSize) {
+        cancelCurrentLoading(view);
         cacheRetrievePool.execute(new RetrieveTask(new Token(url, view, preferSize)));
     }
 
-    public void loadImage(String url, ImageView view) {
+    public void loadImage(final String url, final ImageView view) {
         loadImage(url, view, null);
+    }
+
+    public void clear(final ImageView view) {
+        cancelCurrentLoading(view);
+        view.setImageDrawable(null);
+    }
+
+    private void cancelCurrentLoading(final ImageView view) {
+        // just cancel set image, not cancel downloading process
+        Message msg = notifyHandler.obtainMessage();
+        msg.what = MSG_CANCEL;
+        msg.obj = view;
+        msg.sendToTarget();
     }
 
     private void onRetrieveCacheFail(Token token) {
@@ -78,9 +93,9 @@ public class RequestManager {
             requestQueues.put(token.url, queue);
             RequestOperation operation = new RequestOperation(token.url, token.view, token.size,
                     notifyHandler, surge.cache);
-            RequestOperation.Token lastRequest = operationMap.get(token.view);
-            if (lastRequest != null) {
-                lastRequest.cancel();
+            Token lastRequestToken = operationMap.get(token.view);
+            if (lastRequestToken != null && lastRequestToken instanceof RequestOperation.Token) {
+                ((RequestOperation.Token)lastRequestToken).cancel();
             }
             operationMap.put(token.view, operation.token);
             operation.token.future = downloadPool.submit(operation);
@@ -94,6 +109,10 @@ public class RequestManager {
                 }
             }
             queue.add(token.view);
+            Token queuedViewToken = operationMap.get(token.view);
+            if (queuedViewToken == null || !queuedViewToken.fits(token)) {
+                operationMap.put(token.view, token);
+            }
         }
     }
 
@@ -114,8 +133,8 @@ public class RequestManager {
             Iterator<ImageView> it = queue.iterator();
             while (it.hasNext()) {
                 ImageView queuedView = it.next();
-                RequestOperation.Token queuedViewToken = operationMap.get(queuedView);
-                if (queuedViewToken == null || token.fits(queuedViewToken)) {
+                Token queuedViewToken = operationMap.get(queuedView);
+                if (token.fits(queuedViewToken)) {
                     setImage(queuedView, image);
                     operationMap.remove(queuedView);
                 }
@@ -132,8 +151,8 @@ public class RequestManager {
                 Iterator<ImageView> it = queue.iterator();
                 while (it.hasNext()) {
                     ImageView queuedView = it.next();
-                    RequestOperation.Token queuedViewToken = operationMap.get(queuedView);
-                    if (queuedViewToken == null || token.fits(queuedViewToken)) {
+                    Token queuedViewToken = operationMap.get(queuedView);
+                    if (token.fits(queuedViewToken)) {
                         willRetry = true;
                         operationMap.put(queuedView, token);
                     }
@@ -145,6 +164,15 @@ public class RequestManager {
             }
         } else {
             operationMap.remove(token.view);
+            List<ImageView> queue = requestQueues.get(token.url);
+            Iterator<ImageView> it = queue.iterator();
+            while (it.hasNext()) {
+                ImageView queuedView = it.next();
+                Token queuedViewToken = operationMap.get(queuedView);
+                if (token.fits(queuedViewToken)) {
+                    operationMap.remove(queuedView);
+                }
+            }
             requestQueues.remove(token.url);
         }
     }
@@ -166,6 +194,13 @@ public class RequestManager {
                     break;
                 case MSG_RETRIEVE_FAIL:
                     onRetrieveCacheFail((Token) msg.obj);
+                    break;
+                case MSG_RETRIEVE_DONE:
+                    Token token = (Token)msg.obj;
+                    setImage(token.view, surge.cache.retrieveImage(token.url, token.size));
+                    break;
+                case MSG_CANCEL:
+                    operationMap.remove(msg.obj);
                     break;
             }
         }
@@ -193,15 +228,10 @@ public class RequestManager {
         @Override
         public void run() {
             Bitmap image = surge.cache.retrieveImage(token.url, token.size);
-            if (image == null) {
-                Message msg = notifyHandler.obtainMessage();
-                msg.obj = token;
-                msg.what = MSG_RETRIEVE_FAIL;
-                msg.sendToTarget();
-            } else {
-                // retrieve success
-                setImage(token.view, image);
-            }
+            Message msg = notifyHandler.obtainMessage();
+            msg.obj = token;
+            msg.what = image == null ? MSG_RETRIEVE_FAIL : MSG_RETRIEVE_DONE;
+            msg.sendToTarget();
         }
     }
 
@@ -230,6 +260,7 @@ public class RequestManager {
         }
 
         public boolean fits(Token t) {
+            if (this == t) return true;
             return t != null && t.url.equals(url);
         }
 

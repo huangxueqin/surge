@@ -42,4 +42,8 @@ public class Surge {
     public static void loadImage(final String url, final ImageView view) {
         loadImage(url, view, android.R.color.transparent);
     }
+
+    public static void clear(final ImageView view) {
+        RequestManager.get(view.getContext()).clear(view);
+    }
 }
