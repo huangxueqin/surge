@@ -1,5 +1,6 @@
 package com.huangxueqin.surge.Surge;
 
+import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Point;
@@ -23,7 +24,7 @@ import java.util.concurrent.Executors;
  * Created by huangxueqin on 16/11/19.
  */
 
-public class RequestManager {
+public class RequestManager implements Handler.Callback {
     private static final int MAX_RETRY_TIMES = 3;
 
     static final int MSG_RETRIEVE_DONE = 0x100;
@@ -46,7 +47,7 @@ public class RequestManager {
 
     private RequestManager(Context context) {
         this.surge = Surge.get(context);
-        this.mainHandler = new Handler(context.getMainLooper());
+        this.mainHandler = new Handler(Looper.getMainLooper());
         notifyHandlerThread = new HandlerThread("notify handler thread");
         notifyHandlerThread.start();
         notifyHandler = new NotifyHandler(notifyHandlerThread.getLooper());
@@ -175,6 +176,11 @@ public class RequestManager {
             }
             requestQueues.remove(token.url);
         }
+    }
+
+    @Override
+    public boolean handleMessage(Message msg) {
+        return false;
     }
 
     private class NotifyHandler extends Handler {
