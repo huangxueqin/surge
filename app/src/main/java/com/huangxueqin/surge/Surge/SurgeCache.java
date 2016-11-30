@@ -88,6 +88,15 @@ public class SurgeCache {
         }
     }
 
+    public void close() {
+        try {
+            diskCache.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        memCache.evictAll();
+    }
+
     public Bitmap retrieveImage(String url) {
         return retrieveImage(url, null);
     }

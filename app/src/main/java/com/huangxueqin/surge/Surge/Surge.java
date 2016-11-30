@@ -4,6 +4,7 @@ import android.content.Context;
 import android.widget.ImageView;
 
 import com.huangxueqin.surge.R;
+import com.huangxueqin.surge.Surge.lifecycle.RequestManagerRetriever;
 
 /**
  * Created by huangxueqin on 16/11/13.
@@ -34,16 +35,7 @@ public class Surge {
         return surge;
     }
 
-    public static void loadImage(final String url, final ImageView view, int placeHolder) {
-        view.setImageResource(placeHolder);
-        RequestManager.get(view.getContext()).loadImage(url, view);
-    }
-
-    public static void loadImage(final String url, final ImageView view) {
-        loadImage(url, view, android.R.color.transparent);
-    }
-
-    public static void clear(final ImageView view) {
-        RequestManager.get(view.getContext()).clear(view);
+    public static RequestManager with(Context context) {
+        return RequestManagerRetriever.getDefault().get(context);
     }
 }

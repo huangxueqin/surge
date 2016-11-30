@@ -56,7 +56,8 @@ public class MainActivity extends AppCompatActivity {
                 convertView = LayoutInflater.from(parent.getContext()).inflate(R.layout.list_item, parent, false);
             }
             ImageView image = (ImageView) convertView.findViewById(R.id.image);
-            Surge.loadImage(images[position], image);
+            image.getContext();
+            Surge.with(mContext).loadImage(images[position], image);
             return convertView;
         }
     }

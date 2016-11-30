@@ -1,6 +1,5 @@
 package com.huangxueqin.surge.Surge;
 
-import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Point;
@@ -8,17 +7,17 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
-import android.util.Size;
 import android.view.View;
 import android.widget.ImageView;
 
+import com.huangxueqin.surge.Surge.Utils.Logger;
 import com.huangxueqin.surge.Surge.lifecycle.LifecycleListener;
+import com.huangxueqin.surge.Surge.request.NetworkDataRequest;
 
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -35,9 +34,6 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
     static final int MSG_DOWNLOAD_FAIL = 0x103;
     static final int MSG_CANCEL        = 0x104;
 
-
-    private static RequestManager INSTANCE;
-
     private Surge surge;
     private Handler mainHandler;
     private final ExecutorService downloadPool = Executors.newFixedThreadPool(5);
@@ -53,17 +49,6 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
         notifyHandlerThread = new HandlerThread("notify handler thread");
         notifyHandlerThread.start();
         notifyHandler = new NotifyHandler(notifyHandlerThread.getLooper());
-    }
-
-    public static RequestManager get(Context context) {
-        if (INSTANCE == null) {
-            synchronized (RequestManager.class) {
-                if (INSTANCE == null) {
-                    INSTANCE = new RequestManager(context.getApplicationContext());
-                }
-            }
-        }
-        return INSTANCE;
     }
 
     public void loadImage(final String url, final ImageView view, final Point preferSize) {
@@ -94,11 +79,11 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
             queue = new LinkedList<>();
             queue.add(token.view);
             requestQueues.put(token.url, queue);
-            RequestOperation operation = new RequestOperation(token.url, token.view, token.size,
+            NetworkDataRequest operation = new NetworkDataRequest(token.url, token.view, token.size,
                     notifyHandler, surge.cache);
             Token lastRequestToken = operationMap.get(token.view);
-            if (lastRequestToken != null && lastRequestToken instanceof RequestOperation.Token) {
-                ((RequestOperation.Token)lastRequestToken).cancel();
+            if (lastRequestToken != null && lastRequestToken instanceof NetworkDataRequest.Token) {
+                ((NetworkDataRequest.Token)lastRequestToken).cancel();
             }
             operationMap.put(token.view, operation.token);
             operation.token.future = downloadPool.submit(operation);
@@ -119,7 +104,7 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
         }
     }
 
-    private void onDownloadDone(RequestOperation.Token token) {
+    private void onDownloadDone(NetworkDataRequest.Token token) {
         Bitmap image = null;
         try {
             image = token.get();
@@ -146,7 +131,7 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
         requestQueues.remove(url);
     }
 
-    private void onDownloadFail(RequestOperation.Token token) {
+    private void onDownloadFail(NetworkDataRequest.Token token) {
         if (token.retry < MAX_RETRY_TIMES) {
             List<ImageView> queue = requestQueues.get(token.url);
             if (queue != null) {
@@ -162,7 +147,7 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
                 }
                 if (willRetry) {
                     token.retry += 1;
-                    token.future = downloadPool.submit(new RequestOperation(token, notifyHandler, surge.cache));
+                    token.future = downloadPool.submit(new NetworkDataRequest(token, notifyHandler, surge.cache));
                 }
             }
         } else {
@@ -187,17 +172,17 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
 
     @Override
     public void onStart() {
-
+        Logger.D("on Start");
     }
 
     @Override
     public void onStop() {
-
+        Logger.D("on Stop");
     }
 
     @Override
     public void onDestroy() {
-
+        Logger.D("on Destroy");
     }
 
     private class NotifyHandler extends Handler {
@@ -210,10 +195,10 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
         public void handleMessage(Message msg) {
             switch (msg.what) {
                 case MSG_DOWNLOAD_DONE:
-                    onDownloadDone((RequestOperation.Token) msg.obj);
+                    onDownloadDone((NetworkDataRequest.Token) msg.obj);
                     break;
                 case MSG_DOWNLOAD_FAIL:
-                    onDownloadFail((RequestOperation.Token) msg.obj);
+                    onDownloadFail((NetworkDataRequest.Token) msg.obj);
                     break;
                 case MSG_RETRIEVE_FAIL:
                     onRetrieveCacheFail((Token) msg.obj);
@@ -261,10 +246,10 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
     /**
      * Token that identify an image loading job
      */
-    static class Token {
-        final String url;
-        final ImageView view;
-        final Point size;
+    public static class Token {
+        public final String url;
+        public final ImageView view;
+        public final Point size;
 
         Token(String url, ImageView view) {
             this(url, view, null);

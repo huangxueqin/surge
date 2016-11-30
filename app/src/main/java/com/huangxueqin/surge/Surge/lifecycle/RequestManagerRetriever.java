@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.Fragment;
 import android.app.FragmentManager;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -21,7 +22,7 @@ import java.util.HashSet;
  */
 
 public class RequestManagerRetriever implements Handler.Callback {
-    private static final String TAG = "rmfragment";
+    private static final String TAG = "com.huangxueqin.surge.fragment";
     private static final int MSG_REMOVE_PENDING_FRAGMENT = 1;
     private static final int MSG_REMOVE_PENGING_SUPPORT_FRAGMENT = 2;
     private static final Singleton<RequestManagerRetriever> sDefault = new Singleton<RequestManagerRetriever>() {
@@ -34,12 +35,41 @@ public class RequestManagerRetriever implements Handler.Callback {
     private HashMap<android.support.v4.app.FragmentManager, SupportRequestManagerFragment> pendingSupportFragments = new HashMap<>();
     private Handler handler;
 
+    private RequestManager standAloneRequestManager;
+
     private RequestManagerRetriever() {
         handler = new Handler(Looper.getMainLooper(), this);
     }
 
     public static RequestManagerRetriever getDefault() {
         return sDefault.get();
+    }
+
+    public RequestManager getStandAloneRequestManager(Context context) {
+        if (standAloneRequestManager == null) {
+            synchronized (this) {
+                if (standAloneRequestManager == null) {
+                    standAloneRequestManager = new RequestManager(context);
+                    standAloneRequestManager.onStart();
+                }
+            }
+        }
+        return standAloneRequestManager;
+    }
+
+    public RequestManager get(Context context) {
+        if (context == null) {
+            throw new IllegalArgumentException("can not init RequestManager from a null context");
+        }
+        if (context instanceof Activity) {
+            return get((Activity) context);
+        } else if (context instanceof FragmentActivity) {
+            return get((FragmentActivity) context);
+        } else if (context instanceof ContextWrapper){
+            return get(((ContextWrapper) context).getBaseContext());
+        }
+
+        return getStandAloneRequestManager(context);
     }
 
     public RequestManager get(Activity activity) {
