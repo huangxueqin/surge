@@ -1,26 +1,20 @@
 package com.huangxueqin.surge.Surge.lifecycle;
 
-import android.app.Activity;
-import android.app.Fragment;
 import android.content.Context;
 import android.support.annotation.Nullable;
+import android.support.v4.app.Fragment;
 
 import com.huangxueqin.surge.Surge.RequestManager;
 
-import java.util.HashSet;
-
 /**
- * Created by huangxueqin on 2016/11/29.
+ * Created by huangxueqin on 2016/11/30.
  */
 
-public class RequestManagerFragment extends Fragment {
-
-    private HashSet<RequestManagerFragment> childFragments = new HashSet<>();
-
-    @Nullable private RequestManagerFragment rootFragment;
+public class SupportRequestManagerFragment extends Fragment {
     @Nullable private RequestManager requestManager;
 
-    public RequestManagerFragment() {
+    public SupportRequestManagerFragment() {
+
     }
 
     public RequestManager getRequestManager() {
@@ -29,10 +23,6 @@ public class RequestManagerFragment extends Fragment {
 
     public void setRequestManager(RequestManager manager) {
         requestManager = manager;
-    }
-
-    public void addChildRequestManagerFragment(RequestManagerFragment rmf) {
-        childFragments.add(rmf);
     }
 
     @Override

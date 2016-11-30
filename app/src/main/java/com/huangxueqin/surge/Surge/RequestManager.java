@@ -12,6 +12,8 @@ import android.util.Size;
 import android.view.View;
 import android.widget.ImageView;
 
+import com.huangxueqin.surge.Surge.lifecycle.LifecycleListener;
+
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -24,7 +26,7 @@ import java.util.concurrent.Executors;
  * Created by huangxueqin on 16/11/19.
  */
 
-public class RequestManager implements Handler.Callback {
+public class RequestManager implements Handler.Callback, LifecycleListener {
     private static final int MAX_RETRY_TIMES = 3;
 
     static final int MSG_RETRIEVE_DONE = 0x100;
@@ -45,7 +47,7 @@ public class RequestManager implements Handler.Callback {
     private final HashMap<View, Token> operationMap = new HashMap<>();
     private final HashMap<String, List<ImageView>> requestQueues = new HashMap<>();
 
-    private RequestManager(Context context) {
+    public RequestManager(Context context) {
         this.surge = Surge.get(context);
         this.mainHandler = new Handler(Looper.getMainLooper());
         notifyHandlerThread = new HandlerThread("notify handler thread");
@@ -181,6 +183,21 @@ public class RequestManager implements Handler.Callback {
     @Override
     public boolean handleMessage(Message msg) {
         return false;
+    }
+
+    @Override
+    public void onStart() {
+
+    }
+
+    @Override
+    public void onStop() {
+
+    }
+
+    @Override
+    public void onDestroy() {
+
     }
 
     private class NotifyHandler extends Handler {
