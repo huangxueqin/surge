@@ -12,12 +12,12 @@ import android.widget.ImageView;
 
 import com.huangxueqin.surge.Surge.Utils.Logger;
 import com.huangxueqin.surge.Surge.lifecycle.LifecycleListener;
-import com.huangxueqin.surge.Surge.request.NetworkDataRequest;
+import com.huangxueqin.surge.Surge.request.HttpDataFetcher;
 
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -28,11 +28,11 @@ import java.util.concurrent.Executors;
 public class RequestManager implements Handler.Callback, LifecycleListener {
     private static final int MAX_RETRY_TIMES = 3;
 
-    static final int MSG_RETRIEVE_DONE = 0x100;
-    static final int MSG_RETRIEVE_FAIL = 0x101;
-    static final int MSG_DOWNLOAD_DONE = 0x102;
-    static final int MSG_DOWNLOAD_FAIL = 0x103;
-    static final int MSG_CANCEL        = 0x104;
+    public static final int MSG_RETRIEVE_DONE = 0x100;
+    public static final int MSG_RETRIEVE_FAIL = 0x101;
+    public static final int MSG_DOWNLOAD_DONE = 0x102;
+    public static final int MSG_DOWNLOAD_FAIL = 0x103;
+    public static final int MSG_CANCEL        = 0x104;
 
     private Surge surge;
     private Handler mainHandler;
@@ -40,8 +40,8 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
     private final ExecutorService cacheRetrievePool = Executors.newSingleThreadExecutor();
     private HandlerThread notifyHandlerThread;
     private NotifyHandler notifyHandler;
-    private final HashMap<View, Token> operationMap = new HashMap<>();
-    private final HashMap<String, List<ImageView>> requestQueues = new HashMap<>();
+    private final ConcurrentHashMap<View, Token> operationMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, List<ImageView>> requestQueues = new ConcurrentHashMap<>();
 
     public RequestManager(Context context) {
         this.surge = Surge.get(context);
@@ -79,11 +79,11 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
             queue = new LinkedList<>();
             queue.add(token.view);
             requestQueues.put(token.url, queue);
-            NetworkDataRequest operation = new NetworkDataRequest(token.url, token.view, token.size,
+            HttpDataFetcher operation = new HttpDataFetcher(token.url, token.view, token.size,
                     notifyHandler, surge.cache);
             Token lastRequestToken = operationMap.get(token.view);
-            if (lastRequestToken != null && lastRequestToken instanceof NetworkDataRequest.Token) {
-                ((NetworkDataRequest.Token)lastRequestToken).cancel();
+            if (lastRequestToken != null && lastRequestToken instanceof HttpDataFetcher.Token) {
+                ((HttpDataFetcher.Token)lastRequestToken).cancel();
             }
             operationMap.put(token.view, operation.token);
             operation.token.future = downloadPool.submit(operation);
@@ -104,7 +104,7 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
         }
     }
 
-    private void onDownloadDone(NetworkDataRequest.Token token) {
+    private void onDownloadDone(HttpDataFetcher.Token token) {
         Bitmap image = null;
         try {
             image = token.get();
@@ -131,7 +131,7 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
         requestQueues.remove(url);
     }
 
-    private void onDownloadFail(NetworkDataRequest.Token token) {
+    private void onDownloadFail(HttpDataFetcher.Token token) {
         if (token.retry < MAX_RETRY_TIMES) {
             List<ImageView> queue = requestQueues.get(token.url);
             if (queue != null) {
@@ -147,7 +147,7 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
                 }
                 if (willRetry) {
                     token.retry += 1;
-                    token.future = downloadPool.submit(new NetworkDataRequest(token, notifyHandler, surge.cache));
+                    token.future = downloadPool.submit(new HttpDataFetcher(token, notifyHandler, surge.cache));
                 }
             }
         } else {
@@ -195,10 +195,10 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
         public void handleMessage(Message msg) {
             switch (msg.what) {
                 case MSG_DOWNLOAD_DONE:
-                    onDownloadDone((NetworkDataRequest.Token) msg.obj);
+                    onDownloadDone((HttpDataFetcher.Token) msg.obj);
                     break;
                 case MSG_DOWNLOAD_FAIL:
-                    onDownloadFail((NetworkDataRequest.Token) msg.obj);
+                    onDownloadFail((HttpDataFetcher.Token) msg.obj);
                     break;
                 case MSG_RETRIEVE_FAIL:
                     onRetrieveCacheFail((Token) msg.obj);

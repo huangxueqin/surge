@@ -8,7 +8,7 @@ import com.huangxueqin.surge.Surge.Utils.Size;
  * RequestToken are used to identify a network request
  */
 
-public class RequestToken {
+abstract public class RequestToken implements Request {
     String url;
     Size size;
 
@@ -35,15 +35,8 @@ public class RequestToken {
         }
         if (o instanceof RequestToken) {
             RequestToken t = (RequestToken) o;
-            return t.url.equals(url) && equalSize(t.size, size);
+            return t.url.equals(url) && Size.match(t.size, size);
         }
         return false;
-    }
-
-    private static boolean equalSize(Size lhs, Size rhs) {
-        if (lhs == null) {
-            return rhs == null;
-        }
-        return lhs.equals(rhs);
     }
 }

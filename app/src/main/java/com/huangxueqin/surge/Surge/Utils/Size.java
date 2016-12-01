@@ -20,6 +20,13 @@ public class Size {
         return width >= sz.width && height >= sz.height;
     }
 
+    public static boolean match(Size lhs, Size rhs) {
+        if (lhs == null) {
+            return rhs == null;
+        }
+        return lhs.equals(rhs);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (o == null) {

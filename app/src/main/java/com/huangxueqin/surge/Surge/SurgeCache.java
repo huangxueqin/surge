@@ -8,6 +8,7 @@ import android.util.LruCache;
 
 import com.huangxueqin.surge.Surge.Utils.BitmapUtils;
 import com.huangxueqin.surge.Surge.Utils.Logger;
+import com.huangxueqin.surge.Surge.Utils.Size;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -80,11 +81,11 @@ public class SurgeCache {
         return name;
     }
 
-    private boolean fitSize(Bitmap image, Point requiredSize) {
-        if (requiredSize == null || requiredSize.equals(0, 0)) {
+    private boolean fitSize(Bitmap image, Size requiredSize) {
+        if (requiredSize == null) {
             return true;
         } else {
-            return requiredSize.x <= image.getWidth() && requiredSize.y <= image.getHeight();
+            return requiredSize.width <= image.getWidth() && requiredSize.height <= image.getHeight();
         }
     }
 
@@ -101,7 +102,7 @@ public class SurgeCache {
         return retrieveImage(url, null);
     }
 
-    public Bitmap retrieveImage(final String url, final Point preferSize) {
+    public Bitmap retrieveImage(final String url, final Size preferSize) {
         Bitmap image = memCache.get(url);
         if (image != null && fitSize(image, preferSize)) {
             return image;
@@ -144,7 +145,7 @@ public class SurgeCache {
      * @param preferSize
      * @return true if store success
      */
-    public boolean storeImage(final String url, final InputStream is, Point preferSize) {
+    public boolean storeImage(final String url, final InputStream is, Size preferSize) {
         BufferedInputStream bis = new BufferedInputStream(is);
         try {
             Bitmap image = BitmapUtils.decodeBitmapFromStream(is, preferSize);

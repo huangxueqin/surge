@@ -13,23 +13,23 @@ import java.io.InputStream;
 
 public class BitmapUtils {
 
-    private static int computeInSampleSize(BitmapFactory.Options ops, Point preferSize) {
+    private static int computeInSampleSize(BitmapFactory.Options ops, Size preferSize) {
         int inSampleSize = 1;
         final int width = ops.outWidth;
         final int height = ops.outHeight;
-        if (width > preferSize.x && height > preferSize.y) {
+        if (width > preferSize.width && height > preferSize.height) {
             final int halfWidth = width / 2;
             final int halfHeight = height / 2;
-            while (halfWidth/inSampleSize >= preferSize.x && halfHeight/inSampleSize >= preferSize.y) {
+            while (halfWidth/inSampleSize >= preferSize.width && halfHeight/inSampleSize >= preferSize.height) {
                 inSampleSize *= 2;
             }
         }
         return inSampleSize;
     }
 
-    public static Bitmap decodeBitmapFromStream(InputStream is, Point preferSize) {
+    public static Bitmap decodeBitmapFromStream(InputStream is, Size preferSize) {
         BufferedInputStream bis = new BufferedInputStream(is);
-        if (preferSize == null || preferSize.equals(0, 0)) {
+        if (preferSize == null) {
             return BitmapFactory.decodeStream(bis);
         }
         BitmapFactory.Options options = new BitmapFactory.Options();
