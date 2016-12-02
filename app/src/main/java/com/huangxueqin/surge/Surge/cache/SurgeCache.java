@@ -1,8 +1,7 @@
-package com.huangxueqin.surge.Surge;
+package com.huangxueqin.surge.Surge.cache;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.Point;
 import android.os.Environment;
 import android.util.LruCache;
 

@@ -7,8 +7,7 @@ import android.os.Message;
 import android.widget.ImageView;
 
 import com.huangxueqin.surge.Surge.RequestManager;
-import com.huangxueqin.surge.Surge.SurgeCache;
-import com.huangxueqin.surge.Surge.Utils.Size;
+import com.huangxueqin.surge.Surge.cache.SurgeCache;
 
 import java.util.concurrent.Future;
 

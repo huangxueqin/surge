@@ -1,9 +1,8 @@
 package com.huangxueqin.surge.Surge;
 
 import android.content.Context;
-import android.widget.ImageView;
 
-import com.huangxueqin.surge.R;
+import com.huangxueqin.surge.Surge.cache.SurgeCache;
 import com.huangxueqin.surge.Surge.lifecycle.RequestManagerRetriever;
 
 /**

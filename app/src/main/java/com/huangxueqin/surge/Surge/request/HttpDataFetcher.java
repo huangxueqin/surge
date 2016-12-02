@@ -1,22 +1,16 @@
 package com.huangxueqin.surge.Surge.request;
 
 import android.graphics.Bitmap;
-import android.graphics.Point;
 import android.os.Handler;
-import android.os.Message;
-import android.widget.ImageView;
 
 import com.huangxueqin.surge.Surge.RequestManager;
-import com.huangxueqin.surge.Surge.SurgeCache;
-import com.huangxueqin.surge.Surge.Utils.Logger;
+import com.huangxueqin.surge.Surge.cache.SurgeCache;
 import com.huangxueqin.surge.Surge.Utils.Size;
 
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 
 /**
  * Created by huangxueqin on 16/11/13.
