@@ -16,7 +16,7 @@ import java.util.concurrent.Callable;
  * Created by huangxueqin on 16/11/13.
  */
 
-public class HttpDataFetcher implements Callable<Bitmap> {
+public class HttpFetcher implements Callable<Bitmap> {
     private static final int CONNECT_TIMEOUT = 2500;
     private static final int READ_TIMEOUT = 2500;
 
@@ -26,14 +26,18 @@ public class HttpDataFetcher implements Callable<Bitmap> {
     private SurgeCache cache;
     private boolean cancelled;
 
-    public HttpDataFetcher(String url,
-                           Size size,
-                           Handler notifier,
-                           SurgeCache cache) {
+    public HttpFetcher(String url,
+                       Size size,
+                       Handler notifier,
+                       SurgeCache cache) {
         this.url = url;
         this.size = size;
         this.notifier = notifier;
         this.cache = cache;
+    }
+
+    private boolean isTaskCancelled() {
+        return cancelled || Thread.currentThread().isInterrupted();
     }
 
     @Override
@@ -51,7 +55,7 @@ public class HttpDataFetcher implements Callable<Bitmap> {
             // connect firstly, avoid exception when decode network stream
             conn.connect();
 
-            if (cancelled || Thread.currentThread().isInterrupted()) {
+            if (isTaskCancelled()) {
                 return null;
             }
 
@@ -64,10 +68,9 @@ public class HttpDataFetcher implements Callable<Bitmap> {
             }
             return null;
         } finally {
-            if (complete) {
-                notifier.obtainMessage(RequestManager.MSG_DOWNLOAD_DONE).sendToTarget();
-            } else {
-                notifier.obtainMessage(RequestManager.MSG_DOWNLOAD_FAIL).sendToTarget();
+            if (!isTaskCancelled()) {
+                int what = complete ? LoadDispatcher.MSG_HTTP_TASK_OK : LoadDispatcher.MSG_HTTP_TASK_FAIL;
+                notifier.obtainMessage(what).sendToTarget();
             }
         }
     }

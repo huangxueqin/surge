@@ -1,6 +1,9 @@
 package com.huangxueqin.surge.Surge.request;
 
 
+import android.graphics.Bitmap;
+import android.view.View;
+
 import com.huangxueqin.surge.Surge.Utils.Size;
 
 /**
@@ -46,4 +49,8 @@ abstract public class RequestToken implements Request {
         }
         return lhs.equals(rhs);
     }
+
+    public abstract Bitmap getData();
+
+    public abstract View getTarget();
 }
