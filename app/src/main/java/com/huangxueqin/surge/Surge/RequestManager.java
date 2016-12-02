@@ -38,6 +38,7 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
         this.mainNotifier = new Handler(Looper.getMainLooper(), this);
     }
 
+
     public void clear(final ImageView view) {
         view.setImageDrawable(null);
     }
