@@ -3,6 +3,7 @@ package com.huangxueqin.surge.Surge.request;
 
 import android.graphics.Bitmap;
 import android.view.View;
+import android.widget.ImageView;
 
 import com.huangxueqin.surge.Surge.Utils.Size;
 
@@ -11,7 +12,7 @@ import com.huangxueqin.surge.Surge.Utils.Size;
  * RequestToken are used to identify a network request
  */
 
-abstract public class RequestToken implements Request {
+abstract class RequestToken {
     String url;
     Size size;
 
@@ -28,26 +29,12 @@ abstract public class RequestToken implements Request {
         this(url, null);
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (o == null) {
-            return false;
-        }
-        if (o == this) {
-            return true;
-        }
-        if (o instanceof RequestToken) {
-            RequestToken t = (RequestToken) o;
-            return t.url.equals(url) && equalSize(t.size, size);
-        }
-        return false;
+    public String getRequestURL() {
+        return url;
     }
 
-    private static boolean equalSize(Size lhs, Size rhs) {
-        if (lhs == null) {
-            return rhs == null;
-        }
-        return lhs.equals(rhs);
+    public Size getRequestSize() {
+        return size;
     }
 
     public abstract Bitmap getData();

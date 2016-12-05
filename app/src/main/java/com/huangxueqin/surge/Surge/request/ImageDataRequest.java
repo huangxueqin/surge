@@ -17,23 +17,27 @@ import java.util.concurrent.Future;
  * Created by huangxueqin on 2016/12/1.
  */
 
-public class ImageDataRequest extends RequestToken implements Handler.Callback {
+public class ImageDataRequest extends RequestToken implements Request, Handler.Callback {
+    private enum RequestPhase {STARTED, }
 
     private ImageView target;
+    private Bitmap image;
+
     private SurgeCache cache;
     private Handler taskNotifier;
     private Handler mainNotifier;
 
     private volatile boolean cancelled;
     private volatile boolean isStarted;
+    private volatile boolean isSuspended;
 
-    private HttpFetcher fetcher;
+    private HttpFetcher httpFetcher;
     private Future<Bitmap> fetcherFuture;
 
-    private Bitmap mData;
 
     public ImageDataRequest(ImageView target, String url, Handler mainNotifier, SurgeCache cache) {
         super(url);
+        this.target = target;
         this.cache = cache;
         this.taskNotifier = LoadDispatcher.getDefault().obtainNotifier(this);
         this.mainNotifier = mainNotifier;
@@ -52,12 +56,14 @@ public class ImageDataRequest extends RequestToken implements Handler.Callback {
     }
 
     private void fetchDataFromNetwork() {
-        fetcher = new HttpFetcher(url, size, taskNotifier, cache);
-        fetcherFuture = LoadDispatcher.getDefault().submitHttpTask(fetcher);
+        fetcherFuture = LoadDispatcher.getDefault().submitHttpTask(httpFetcher);
     }
 
     @Override
     public void start() {
+        if (sizeReady(target)) {
+
+        }
         if (target.getWidth() > 0 && target.getHeight() > 0) {
             isStarted = true;
             size = new Size(target.getWidth(), target.getHeight());
@@ -106,8 +112,8 @@ public class ImageDataRequest extends RequestToken implements Handler.Callback {
                 break;
             case LoadDispatcher.MSG_HTTP_TASK_OK:
                 try {
-                    mData = fetcherFuture.get();
-                    fetcher = null;
+                    image = fetcherFuture.get();
+                    httpFetcher = null;
                     fetcherFuture = null;
                     mainNotifier.obtainMessage(Request.MSG_REQUEST_SUCCESS, this).sendToTarget();
                 } catch (Exception e) {
@@ -118,20 +124,30 @@ public class ImageDataRequest extends RequestToken implements Handler.Callback {
                 fetchDataFromNetwork();
                 break;
             case LoadDispatcher.MSG_IO_TASK_OK:
-                mData = (Bitmap) msg.obj;
+                image = (Bitmap) msg.obj;
                 mainNotifier.obtainMessage(Request.MSG_REQUEST_SUCCESS, this).sendToTarget();
                 break;
+            default:
+                return false;
         }
-        return false;
+        return true;
     }
 
     @Override
     public Bitmap getData() {
-        return mData;
+        return image;
     }
 
     @Override
     public View getTarget() {
         return target;
+    }
+
+    private static boolean sizeReady(View view) {
+        return view.getWidth() > 0 && view.getHeight() > 0;
+    }
+
+    private static Size getSize(View view) {
+        return new Size(view.getWidth(), view.getHeight());
     }
 }

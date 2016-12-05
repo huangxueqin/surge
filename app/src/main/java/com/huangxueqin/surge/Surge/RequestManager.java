@@ -12,9 +12,11 @@ import com.huangxueqin.surge.Surge.Utils.Logger;
 import com.huangxueqin.surge.Surge.lifecycle.LifecycleListener;
 import com.huangxueqin.surge.Surge.request.HttpFetcher;
 import com.huangxueqin.surge.Surge.request.ImageDataRequest;
+import com.huangxueqin.surge.Surge.request.Request;
 import com.huangxueqin.surge.Surge.request.RequestToken;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -27,11 +29,14 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
     private Surge surge;
     private Handler mainNotifier;
     private final HashMap<View, RequestToken> currentRequestMap = new HashMap<>();
-    private final HashMap<String, View> waitingViewQueues = new HashMap<>();
+    private final HashMap<String, HashSet<RequestToken>> waitingViewQueues = new HashMap<>();
 
     // record requests are current executing
-    private final List<RequestToken> requests = new LinkedList<>();
-    private final List<RequestToken> pendingRequests = new LinkedList<>();
+    private final List<Request> requests = new LinkedList<>();
+    private final List<Request> pendingRequests = new LinkedList<>();
+    private boolean isStarted = false;
+    private boolean isStopped = false;
+    private boolean isDestroyed = false;
 
     public RequestManager(Context context) {
         this.surge = Surge.get(context);
@@ -50,22 +55,43 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
 
     @Override
     public boolean handleMessage(Message msg) {
-        return false;
+        switch (msg.what) {
+            case Request.MSG_REQUEST_SUCCESS:
+                RequestToken token = (RequestToken) msg.obj;
+
+                break;
+            case Request.MSG_REQUEST_FAIL:
+                break;
+            default:
+                return false;
+        }
+        return true;
     }
 
     @Override
     public void onStart() {
         Logger.D("on Start");
+        isStarted = true;
+        isStopped = false;
+        isDestroyed = false;
+        for (Request request: pendingRequests) {
+            request.resume();
+        }
     }
 
     @Override
     public void onStop() {
         Logger.D("on Stop");
+        isStopped = true;
+        for (Request request: requests) {
+
+        }
     }
 
     @Override
     public void onDestroy() {
         Logger.D("on Destroy");
+        isDestroyed = true;
     }
 
     public class RequestBuilder {
@@ -76,12 +102,30 @@ public class RequestManager implements Handler.Callback, LifecycleListener {
             return this;
         }
 
-        public RequestBuilder into(ImageView view) {
+        public void into(ImageView view) {
             if (url == null) {
                 throw new IllegalArgumentException("can not start request without a URL");
             }
+            if (isDestroyed) {
+                throw new IllegalStateException("RequestManager has already destroyed");
+            }
             ImageDataRequest request = new ImageDataRequest(view, url, mainNotifier, surge.cache);
+            RequestToken oldRequest = currentRequestMap.get(view);
+            if (oldRequest != null) {
+                oldRequest.cancel();
+            }
+            currentRequestMap.put(view, request);
+            boolean shouldStartRequest = waitingViewQueues.get(url) != null;
+            waitingViewQueues.get(url).add(request);
 
+            if (shouldStartRequest) {
+                requests.add(request);
+                if (isStarted && !isStopped) {
+                    request.start();
+                } else if (isStopped) {
+                    pendingRequests.add(request);
+                }
+            }
         }
     }
 }

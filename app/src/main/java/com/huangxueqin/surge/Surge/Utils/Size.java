@@ -2,6 +2,7 @@ package com.huangxueqin.surge.Surge.Utils;
 
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.view.View;
 
 /**
  * Created by huangxueqin on 2016/11/30.
@@ -14,6 +15,11 @@ public class Size {
     public Size(int width, int height) {
         this.width = width;
         this.height = height;
+    }
+
+    public Size(View target) {
+        this.width = target.getWidth();
+        this.height = target.getHeight();
     }
 
     public boolean fit(@NonNull Size sz) {
